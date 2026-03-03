@@ -1,0 +1,6 @@
+.tmp_dagster_home_*
+.venv
+__pycache__
+codislas.csv
+distribucion-renta-canarias.csv
+Gráficos
