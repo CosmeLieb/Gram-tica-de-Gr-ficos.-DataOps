@@ -91,7 +91,7 @@ def check_num_entadas_dif_TERRITORIO_ES_CODE(df):
             "entradas_detectadas_TERRITORIO#es": MetadataValue.int(es),
             "entradas_detectadas_TERRITORIO_CODE": MetadataValue.int(code),
             "principio_gestalt": "Similitud / Correspondencia",
-            "descripcion": "Al comprobar el número de variables diferentes en las dos columnas, se evita asignar diferentes representaciones a valores que deberían ser asignados la misma etiqueta"
+            "descripcion": "Al comprobar el número de variables diferentes en las dos columnas, se evita asignar diferentes representaciones a valores que deberían ser asignados la misma etiqueta."
         }
     )
 
@@ -109,7 +109,7 @@ def verificar_no_nulos_renta(cargar_distrib_renta):
         metadata = {
             "valores_nulos": MetadataValue.int(int(valores_nulos)),
             "principio_gestalt": "Figura y Fondo",
-            "descripcion": "Los huecos inesperados rompen la forma de la visualización"
+            "descripcion": "Los huecos inesperados rompen la forma de la visualización."
         }
     )
 
@@ -145,7 +145,7 @@ def check_duplicados_renta(df):
         metadata={
             "filas_duplicadas": MetadataValue.int(int(duplicados)),
             "principio_gestalt": "Similitud",
-            "descripcion": "Cuando ocurre el duplicado de entradas, se refuerza de forma incorrecta la categoría afectada"
+            "descripcion": "Cuando ocurre el duplicado de entradas, se refuerza de forma incorrecta la categoría afectada."
         }
     )
 
@@ -258,7 +258,7 @@ def check_duplicados_codislas(df):
         metadata={
             "filas_duplicadas": MetadataValue.int(int(duplicados)),
             "principio_gestalt": "Similitud",
-            "descripcion": "Cuando ocurre el duplicado de entradas, se refuerza de forma incorrecta la categoría afectada"
+            "descripcion": "Cuando ocurre el duplicado de entradas, se refuerza de forma incorrecta la categoría afectada."
         }
     )
 
@@ -321,7 +321,7 @@ def check_merge_sin_filas_perdidas(df):
         metadata={
             "filas_totales": MetadataValue.int(int(filas)),
             "principio_gestalt": "Continuidad",
-            "descripcion": "En el caso de perderse filas, se rompe la estructura de los datos"
+            "descripcion": "En el caso de perderse filas, se rompe la estructura de los datos."
         }
     )
 
@@ -493,7 +493,7 @@ def check_custom_color_map(df):
             "num_islas_datos": MetadataValue.int(int(plot_data["ISLA"].nunique())),
             "num_islas_color_map": MetadataValue.int(int(len(CUSTOM_COLOR_MAP.keys()))),
             "principio_gestalt": "Similitud / Consistencia",
-            "descripcion": "Si una categoría no se le asigna un color, se rompe la asociación visual"
+            "descripcion": "Si una categoría no se le asigna un color, se rompe la asociación visual."
         }
     )
 
@@ -511,6 +511,6 @@ def check_custom_shapes_map(df):
             "num_islas_datos": MetadataValue.int(int(plot_data["ISLA"].nunique())),
             "num_islas_shapes_map": MetadataValue.int(int(len(CUSTOM_SHAPES_MAP.keys()))),
             "principio_gestalt": "Similitud / Consistencia",
-            "descripcion": "Si una categoría no se le asigna una forma, se rompe la asociación visual"
+            "descripcion": "Si una categoría no se le asigna una forma, se rompe la asociación visual."
         }
     )
