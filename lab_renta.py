@@ -613,7 +613,7 @@ def visualizacion_png(context, codigo_generado_ia, preparacion_data_plot):
 
         subprocess.run(["git", "add", ruta_archivo], check=True)
         subprocess.run(["git", "commit", "-m", "Actualización automática del gráfico"], check=True)
-        subprocess.run(["git", "push", "origin", "HEAD:gh-pages"], check=True)
+        subprocess.run(["git", "push", "origin", "HEAD:gh-pages", "--force"], check=True)
 
         return Output(
             value=ruta_archivo,
