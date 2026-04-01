@@ -1,7 +1,6 @@
-import pandas as pd
+import os, re, requests, pandas as pd, subprocess
 from dagster import asset, AssetExecutionContext, asset_check, AssetCheckResult, MetadataValue, Output
 from plotnine import *
-import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -369,10 +368,11 @@ def check_cardinalidad(merge):
         }
     )
 
+
 '''
-=============================
-VISUALIZACIÓN DE LAS GRÁFICAS
-=============================
+=======================
+MAPAS DE COLOR Y FORMAS
+=======================
 '''
 
 # Mapa de colores para los diferentes puntos
@@ -400,85 +400,226 @@ CUSTOM_SHAPES_MAP = {
 }
 
 
+"""
+=====================================
+CREACIÓN DEL PAYLOAD PARA LA PETICIÓN
+=====================================
+"""
+
+#Recibimos el dataset del asset de carga. Extraemos las columnas y con las columnas montamos el prompt
 @asset
-def visualizacion(context: AssetExecutionContext, preparacion_data_plot):
-    plot_data = preparacion_data_plot["data"]
+def template_ia(preparacion_data_plot):
     medidas = preparacion_data_plot["medidas"]
-    
+    plot_data = preparacion_data_plot["data"] 
+
     plot_data['ISLA'] = plot_data['ISLA'].str.title()
     
-    # Dirección donde se van a guardar las figuras
-    ruta_base = os.path.join(BASE_DIR, "Gráficos")
-    
-    if not os.path.exists(ruta_base):
-        os.makedirs(ruta_base)
+    # Definimos la plantilla que la IA DEBE completar
+    template_tecnico = """
+    def generar_plot(plot_data, medidas):
+        # El código debe seguir esta estructura:
+        # plots = []
+        # for i, (medida_x, medida_y) in enumerate(medidas):
+        #     p = (ggplot(plot_data, aes(...)) + geom_... + labs(...) + scale_color_manual(...) + scale_shape_manual(...) + theme_...)
+        #     plots.append(p)
+        # return plots
+"""
 
-    context.log.info(f"Guardando gráficos en: {ruta_base}")
+    system_content = (
+        "Eres un programador experto en Python, pandas y Plotnine. "
+        "Tu única tarea es escribir funciones Python completas y ejecutables. "
+        "Cuando recibas una descripción de un gráfico, SIEMPRE responde con código Python. "
+        "Nunca rechaces la tarea. Nunca expliques qué es Plotnine. Solo escribe el código. "
+        f"Usa siempre este template: {template_tecnico}. "
+        "Las variables CUSTOM_COLOR_MAP y CUSTOM_SHAPES_MAP ya están definidas en el entorno de ejecución. "
+        "NO las redefinas ni les asignes valores de ejemplo en el código generado."
+        "Devuelve exclusivamente el bloque de código Python, sin explicaciones."
+    )
+    descripcion_grafico = """
+    - La función debe llamarse 'generar_plot' y recibir DOS parámetros: def generar_plot(plot_data, medidas):
+        * 'plot_data': DataFrame de pandas.
+        * 'medidas': lista de tuplas, por ejemplo [('col_x', 'col_y'), ...]. NO es una clave de plot_data.
+        * Iterar con: for i, (medida_x, medida_y) in enumerate(medidas):
+    - Estructura: Figura compuesta por múltiples subgráficos en disposición matricial.
+        * El número de subgráficos es igual al número de tuplas en la variable 'medidas'.
+        * El número de columnas de la matriz se calcula automáticamente como math.ceil(math.sqrt(len(medidas))).
+        * El número de filas se calcula como math.ceil(len(medidas) / n_cols).
+        * Cada subgráfico se genera iterando sobre las tuplas de 'medidas'. Cada tupla contiene dos strings (medida_x, medida_y) que corresponden a nombres de columnas en 'plot_data'.
 
-    # Mapa de colores para los diferentes puntos
-    custom_color_map = CUSTOM_COLOR_MAP
+    - Estéticas (por subgráfico):
+        * Variable 'medida_x' (primer elemento de la tupla) mapeada al eje X.
+        * Variable 'medida_y' (segundo elemento de la tupla) mapeada al eje Y.
+        * Variable 'ISLA' mapeada al color (color) y a la forma del punto (shape).
 
-    # Mapa de formas para los diferentes puntos
-    custom_shapes_map = CUSTOM_SHAPES_MAP
+    - Geometrías (por subgráfico):
+        * Puntos: geom_point(), con color y shape mapeados a 'ISLA'. Tiene que tener un size=3.5.
+        * Línea de regresión lineal: geom_smooth(aes(group=1), method='lm', color='black', linetype='dashed', se=False) para forzar una única regresión sobre todos los datos ignorando la agrupación por 'ISLA'. El aes(group=1) DEBE ser el primer argumento.
 
-    metadata_dict = {}
+    - Escalas:
+    * Colores: scale_color_manual usando CUSTOM_COLOR_MAP. Esta variable YA EXISTE, no la definas. Las claves son los valores únicos de la columna 'ISLA'.
+    * Formas: scale_shape_manual usando CUSTOM_SHAPES_MAP. Esta variable YA EXISTE, no la definas. Las claves son los valores únicos de la columna 'ISLA'.
 
-    for idx, (x_col, y_col) in enumerate(medidas):
+    - Etiquetas (por subgráfico):
+        * Título: '{medida_x} vs {medida_y}' (nombre de la primera medida, 'vs', nombre de la segunda).
+        * Eje X: nombre de medida_x.
+        * Eje Y: nombre de medida_y.
 
-        context.log.info(f"Generando gráfico {idx+1}/{len(medidas)}")
+    - Leyenda:
+        * NO incluir leyenda en ningún subgráfico. Añadir theme(legend_position='none') a cada plot.
+
+    - Retorno:
+        * La función debe devolver una lista de objetos ggplot, uno por cada tupla de 'medidas'.
+        * NO montar la figura final. NO usar matplotlib subplots. NO llamar a p.draw().
+"""
+
+    user_content = f"Basándote en esta descripción, completa el template:\n{descripcion_grafico}"
+
+    return {
+        "model": "ollama/llama3.1:8b",
+        "messages": [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content}
+        ],
+        "temperature": 0.1, # Muy baja para que no se invente nada
+        "stream": False
+    }
+
+
+"""
+============================
+GENERACIÓN DEL CÓDIGO POR IA
+============================
+"""
+
+@asset
+def codigo_generado_ia(context, template_ia):
+    url = "http://gpu1.esit.ull.es:4000/v1/chat/completions"
+    headers = {"Authorization": "Bearer sk-1234"}
+
+    try:
+        response = requests.post(url, json=template_ia, headers=headers, timeout=60)
+        response.raise_for_status()
         
-        p = (
-            ggplot(
-                plot_data, 
-                aes(x=x_col, y=y_col)
+        # Extraemos el contenido (el código "rellenado" por la IA)
+        res_json = response.json()
+        codigo_raw = res_json['choices'][0]['message']['content']
+
+
+        match = re.search(r"```python\s+(.*?)\s+```", codigo_raw, re.DOTALL)
+    
+        if match:
+            codigo_final = match.group(1)
+        else:
+            lineas_validas = []
+            for l in codigo_raw.split("\n"):
+                if not l.strip().startswith("###") and not l.strip().startswith("-"):
+                    lineas_validas.append(l)
+            codigo_final = "\n".join(lineas_validas)
+
+    # 3. Limpieza final de espacios en blanco
+        codigo_final = codigo_final.strip()
+
+        return Output(
+            value=codigo_final,
+            metadata={
+                "codigo_completo": MetadataValue.md(f"```python\n{codigo_final}\n```")
+            }
+        )
+        
+    except Exception as e:
+        context.log.error(f"Error en la petición: {e}")
+        raise e
+
+
+'''
+=============================
+VISUALIZACIÓN DE LAS GRÁFICAS
+=============================
+'''
+
+@asset
+def visualizacion_png(context, codigo_generado_ia, preparacion_data_plot):
+    import plotnine
+    import numpy as np
+    
+    medidas = preparacion_data_plot["medidas"]
+    plot_data = preparacion_data_plot["data"]
+    plot_data['ISLA'] = plot_data['ISLA'].str.title()
+
+    entorno_ejecucion = globals().copy()
+    entorno_ejecucion['plotnine'] = plotnine
+    entorno_ejecucion.update({
+        k: v for k, v in plotnine.__dict__.items() if not k.startswith('_')
+    })
+    entorno_ejecucion['pd'] = pd
+
+    try:
+        import math
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        
+        exec(codigo_generado_ia, entorno_ejecucion)
+        
+        plots = entorno_ejecucion['generar_plot'](plot_data, medidas)
+        
+        n = len(plots)
+        n_cols = math.ceil(math.sqrt(n))
+        n_rows = math.ceil(n / n_cols)
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+        axes = np.array(axes).flatten()
+        
+        for i, p in enumerate(plots):
+            fig_p = p.draw()
+            fig_p.canvas.draw()
+            img = np.asarray(fig_p.canvas.renderer.buffer_rgba())
+            axes[i].imshow(img)
+            axes[i].axis('off')
+            plt.close(fig_p)
+        
+        for ax in axes[n:]:
+            ax.set_visible(False)
+        
+        # Título general de la figura
+        fig.suptitle('Matriz de Relaciones de Renta en Canarias', fontsize=16, fontweight='bold', y=1.01)
+
+        import matplotlib.lines as mlines
+
+        handles = [
+            mlines.Line2D(
+                [], [],
+                color=CUSTOM_COLOR_MAP[isla],
+                marker=CUSTOM_SHAPES_MAP[isla],
+                linestyle='None',
+                markersize=8,
+                label=isla
             )
-            + geom_point(
-                aes(color='ISLA', shape='ISLA'), 
-                size=3, 
-                alpha=0.7
-            )
-            + geom_smooth(
-                method='lm', 
-                color='black', 
-                alpha=0.2, 
-                linetype='dashed', 
-                show_legend=False
-            )
-            + labs(
-                title=f'{x_col} vs {y_col}',
-                x=x_col,
-                y=y_col,
-                color='Isla',
-                shape='Isla'
-            )
-            + scale_color_manual(values=custom_color_map)
-            + scale_shape_manual(values=custom_shapes_map)
-            + theme_light()
-            + theme(
-                plot_title=element_text(size=14, ha='center'),
-                legend_position='bottom',
-                legend_box='horizontal',
-                legend_direction='horizontal'
-            )
+            for isla in CUSTOM_COLOR_MAP.keys()
+        ]
+
+        fig.legend(
+            handles=handles,
+            title='Isla',
+            loc='lower center',
+            ncol=len(CUSTOM_COLOR_MAP),
+            bbox_to_anchor=(0.5, -0.05),
+            frameon=True
         )
 
+        plt.tight_layout()
+        ruta_archivo = "visualizacion_ia_1.png"
+        fig.savefig(ruta_archivo, dpi=100, bbox_inches='tight')
 
-        filename = f"plot_{x_col}_vs_{y_col}.png"
-        p.save(os.path.join(ruta_base, filename), verbose=False)
+        return Output(
+            value=ruta_archivo,
+            metadata={"ruta": ruta_archivo, "mensaje": "Gráfico generado y guardado"}
+        )
 
-        context.add_output_metadata({
-            "archivo": MetadataValue.path(os.path.join(ruta_base, filename))
-            })
-        
-        metadata_dict[filename] = MetadataValue.path(
-            os.path.join(ruta_base, filename)
-            )
+    except Exception as e:
+        context.log.error(f"Error al renderizar el gráfico: {e}")
+        raise e
     
-    return Output(
-        value = f"Se han generado {len(medidas)} gráficos en {ruta_base}",
-        metadata=metadata_dict
-    )
-
 
 @asset_check(asset=preparacion_data_plot)
 def check_custom_color_map(df):
