@@ -611,6 +611,10 @@ def visualizacion_png(context, codigo_generado_ia, preparacion_data_plot):
         ruta_archivo = "visualizacion_ia_1.png"
         fig.savefig(ruta_archivo, dpi=100, bbox_inches='tight')
 
+        subprocess.run(["git", "add", ruta_archivo], check=True)
+        subprocess.run(["git", "commit", "-m", "Actualización automática del gráfico"], check=True)
+        subprocess.run(["git", "push", "origin", "HEAD:gh-pages"], check=True)
+
         return Output(
             value=ruta_archivo,
             metadata={"ruta": ruta_archivo, "mensaje": "Gráfico generado y guardado"}
